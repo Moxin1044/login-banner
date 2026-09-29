@@ -51,6 +51,18 @@ if [ "${#cpu}" -gt 30 ]; then cpu="$(printf '%s' "$cpu" | cut -c1-30)"; fi
 pkg_n="$(pacman -Q 2>/dev/null | wc -l | tr -d ' ')"
 [ -n "$pkg_n" ] && [ "$pkg_n" != "0" ] || pkg_n="n/a"
 
+upd_h="n/a"
+if command -v pacman >/dev/null 2>&1; then
+    out="$(timeout 5 checkupdates 2>/dev/null)"; rc=$?
+    if [ "$rc" -ne 124 ]; then
+        upd_n="$(printf '%s\n' "$out" | sed '/^$/d' | wc -l | tr -d ' ')"
+    else
+        upd_n="$(pacman -Qu 2>/dev/null | wc -l | tr -d ' ')"
+    fi
+    [ -n "$upd_n" ] || upd_n=0
+    if [ "$upd_n" = "0" ]; then upd_h="up to date"; else upd_h="$upd_n available"; fi
+fi
+
 mem_total="$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null)"
 mem_avail="$(awk '/^MemAvailable:/{print $2}' /proc/meminfo 2>/dev/null)"
 [ -n "$mem_total" ] || mem_total=0
@@ -84,7 +96,7 @@ now="$(date '+%Y-%m-%d %H:%M')"
 # ---- render ----------------------------------------------------------------
 awk -v TRUE="$TRUE" \
     -v user="$user" -v host="$host" -v os="$os" -v kernel="$kernel" \
-    -v uptime="$uptime_s" -v shell="$shell_n" -v cpu="$cpu" -v pkgs="$pkg_n" \
+    -v uptime="$uptime_s" -v shell="$shell_n" -v cpu="$cpu" -v pkgs="$pkg_n" -v upd="$upd_h" \
     -v mem="$mem_h" -v memp="$mem_pct" \
     -v disk="$disk_h" -v diskp="$disk_pct" \
     -v ip="$ip_addr" -v from="$from" -v now="$now" '
@@ -131,16 +143,17 @@ BEGIN {
     info[5]  = label "Shell   " R value shell R
     info[6]  = label "CPU     " R value cpu R
     info[7]  = label "Packages" R value " " pkgs " (pacman)" R
-    info[8]  = label "Memory  " R value mem "  " makebar(memp) " " value memp "%" R
-    info[9]  = label "Disk    " R value disk "  " makebar(diskp) " " value diskp "%" R
-    info[10] = label "IP      " R value ip R
-    info[11] = label "From    " R value from R
-    info[12] = label "Time    " R value now R
-    info[13] = " " ESC "[38;5;25m"  "\342\226\210" ESC "[38;5;33m"  "\342\226\210" \
+    info[8]  = label "Updates " R value " " upd R
+    info[9]  = label "Memory  " R value mem "  " makebar(memp) " " value memp "%" R
+    info[10] = label "Disk    " R value disk "  " makebar(diskp) " " value diskp "%" R
+    info[11] = label "IP      " R value ip R
+    info[12] = label "From    " R value from R
+    info[13] = label "Time    " R value now R
+    info[14] = " " ESC "[38;5;25m"  "\342\226\210" ESC "[38;5;33m"  "\342\226\210" \
                  ESC "[38;5;39m"  "\342\226\210" ESC "[38;5;45m"  "\342\226\210" \
                  ESC "[38;5;51m"  "\342\226\210" ESC "[38;5;87m"  "\342\226\210" \
                  ESC "[38;5;159m" "\342\226\210" ESC "[38;5;195m" "\342\226\210" R
-    ni = 13
+    ni = 14
     n  = (nl > ni) ? nl : ni
 
     print ""
