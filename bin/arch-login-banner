@@ -31,6 +31,9 @@ esac
 # ---- collect system information --------------------------------------------
 user="${USER:-$(id -un 2>/dev/null)}"
 host="$(hostname 2>/dev/null)"
+[ -n "$host" ] || host="$(uname -n 2>/dev/null)"
+[ -n "$host" ] || host="$(cat /etc/hostname 2>/dev/null)"
+[ -n "$host" ] || host="localhost"
 if [ -r /etc/os-release ]; then
     os="$(. /etc/os-release; printf '%s' "${PRETTY_NAME:-${NAME:-Linux}}")"
 else

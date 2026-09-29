@@ -1,6 +1,9 @@
 # login-banner
 
-炫酷的 **SSH / 登录横幅**，一条命令替换系统默认登录提示。支持 **Kali/Debian** 与 **Arch Linux**，对**所有用户**生效，不影响 `scp` / `sftp` / `ssh host 命令`。
+炫酷的 **SSH / 登录横幅**，一键替换系统默认登录提示。对**所有用户**生效，不影响 `scp` / `sftp` / `ssh host 命令`。
+
+- **Kali / Debian / Ubuntu** —— 粉→紫→蓝→青渐变的 `KALI`
+- **Arch Linux** —— 蓝色渐变的 `ARCH` + pacman 包数
 
 ```
    _  __    _    _     ___     user@host
@@ -13,30 +16,34 @@
                                Disk    16G/94G  ██░░░░░░░░░░ 18%
 ```
 
-Arch Linux 上会显示蓝色的 `ARCH` 以及 `Packages (pacman)` 计数：
-
 ```
       _    ____   ____ _   _     user@host
      / \  |  _ \ / ___| | | |    OS      Arch Linux
-    / _ \ | |_) | |   | |_| |    Kernel  linux
-   / ___ \|  _ <| |___|  _  |    Packages 1234 (pacman)
+    / _ \ | |_) | |   | |_| |    Kernel  7.2.7-arch1-1
+   / ___ \|  _ <| |___|  _  |    Packages 1270 (pacman)
   /_/   \_\_| \_\\____|_| |_|    ...
 ```
 
 ## 一键安装 / 替换
 
+按系统选一个脚本，`sudo` 运行即可（会自动安装到 `/usr/local/bin/login-banner`，
+并写入 `/etc/profile.d/99-login-banner.sh`，所有用户登录时生效）。
+
 ```sh
-git clone <本仓库地址> login-banner && cd login-banner
-sudo ./install.sh
+git clone git@github.com:Moxin1044/login-banner.git
+cd login-banner
+
+# Kali / Debian / Ubuntu
+sudo ./install-kali.sh
+
+# Arch Linux
+sudo ./install-arch.sh
 ```
 
-脚本会自动识别当前发行版（Kali/Debian 或 Arch），安装对应横幅到
-`/usr/local/bin/login-banner`，并写入 `/etc/profile.d/99-login-banner.sh`（所有用户登录时生效）。
-
-## 一键卸载 / 还原
+## 一键还原
 
 ```sh
-sudo ./uninstall.sh
+sudo ./install-kali.sh uninstall      # 或 install-arch.sh uninstall
 ```
 
 ## 显示时机
@@ -61,10 +68,10 @@ SSH_BANNER_SHOW=never login-banner # 强制不显示
 
 | 路径 | 说明 |
 | --- | --- |
-| `bin/kali-login-banner` | Kali/Debian 横幅（粉→紫→蓝→青渐变 `KALI`） |
-| `bin/arch-login-banner` | Arch 横幅（蓝色渐变 `ARCH` + pacman 包数） |
-| `install.sh` | 一键安装/替换（自动识别发行版） |
-| `uninstall.sh` | 一键卸载/还原 |
+| `bin/kali-login-banner` | Kali/Debian 横幅 |
+| `bin/arch-login-banner` | Arch 横幅 |
+| `install-kali.sh` | Kali/Debian 一键安装/还原 |
+| `install-arch.sh` | Arch 一键安装/还原 |
 
 ## 自定义
 
