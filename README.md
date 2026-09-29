@@ -30,7 +30,7 @@
 并写入 `/etc/profile.d/99-login-banner.sh`，所有用户登录时生效）。
 
 ```sh
-git clone git@github.com:Moxin1044/login-banner.git
+git clone https://github.com/Moxin1044/login-banner.git
 cd login-banner
 
 # Kali / Debian / Ubuntu
