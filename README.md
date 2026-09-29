@@ -2,7 +2,7 @@
 
 炫酷的 **SSH / 登录横幅**，一键替换系统默认登录提示。对**所有用户**生效，不影响 `scp` / `sftp` / `ssh host 命令`。
 
-- **Kali / Debian / Ubuntu** —— 粉→紫→蓝→青渐变的 `KALI`
+- **Kali / Debian / Ubuntu** —— 粉→紫→蓝→青渐变的 `KALI` + apt 可升级数量
 - **Arch Linux** —— 蓝色渐变的 `ARCH` + pacman 包数 / 可更新数量
 
 ```

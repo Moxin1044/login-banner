@@ -48,6 +48,13 @@ cpu="$(awk -F: '/^model name/{sub(/^[ \t]+/,"",$2); print $2; exit}' /proc/cpuin
 cpu="$(printf '%s' "$cpu" | sed 's/ CPU @.*//; s/(R)//g; s/(TM)//g; s/(tm)//g; s/  */ /g')"
 if [ "${#cpu}" -gt 30 ]; then cpu="$(printf '%s' "$cpu" | cut -c1-30)"; fi
 
+upd_h="n/a"
+if command -v apt >/dev/null 2>&1; then
+    apt_n="$(LC_ALL=C timeout 8 apt list --upgradable 2>/dev/null | grep -c 'upgradable')"
+    [ -n "$apt_n" ] || apt_n=0
+    if [ "$apt_n" = "0" ]; then upd_h="up to date"; else upd_h="$apt_n available"; fi
+fi
+
 mem_total="$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null)"
 mem_avail="$(awk '/^MemAvailable:/{print $2}' /proc/meminfo 2>/dev/null)"
 [ -n "$mem_total" ] || mem_total=0
@@ -80,7 +87,7 @@ now="$(date '+%Y-%m-%d %H:%M')"
 # ---- render ----------------------------------------------------------------
 awk -v TRUE="$TRUE" \
     -v user="$user" -v host="$host" -v os="$os" -v kernel="$kernel" \
-    -v uptime="$uptime_s" -v shell="$shell_n" -v cpu="$cpu" \
+    -v uptime="$uptime_s" -v shell="$shell_n" -v cpu="$cpu" -v upd="$upd_h" \
     -v mem="$mem_h" -v memp="$mem_pct" \
     -v disk="$disk_h" -v diskp="$disk_pct" \
     -v ip="$ip_addr" -v from="$from" -v now="$now" '
@@ -126,16 +133,17 @@ BEGIN {
     info[4]  = label "Uptime  " R value uptime R
     info[5]  = label "Shell   " R value shell R
     info[6]  = label "CPU     " R value cpu R
-    info[7]  = label "Memory  " R value mem "  " makebar(memp) " " value memp "%" R
-    info[8]  = label "Disk    " R value disk "  " makebar(diskp) " " value diskp "%" R
-    info[9]  = label "IP      " R value ip R
-    info[10] = label "From    " R value from R
-    info[11] = label "Time    " R value now R
-    info[12] = " " ESC "[38;5;198m" "\342\226\210" ESC "[38;5;171m" "\342\226\210" \
+    info[7]  = label "Updates " R value " " upd R
+    info[8]  = label "Memory  " R value mem "  " makebar(memp) " " value memp "%" R
+    info[9]  = label "Disk    " R value disk "  " makebar(diskp) " " value diskp "%" R
+    info[10] = label "IP      " R value ip R
+    info[11] = label "From    " R value from R
+    info[12] = label "Time    " R value now R
+    info[13] = " " ESC "[38;5;198m" "\342\226\210" ESC "[38;5;171m" "\342\226\210" \
                  ESC "[38;5;105m" "\342\226\210" ESC "[38;5;69m"  "\342\226\210" \
                  ESC "[38;5;45m"  "\342\226\210" ESC "[38;5;79m"  "\342\226\210" \
                  ESC "[38;5;221m" "\342\226\210" ESC "[38;5;203m" "\342\226\210" R
-    ni = 12
+    ni = 13
     n  = (nl > ni) ? nl : ni
 
     print ""
