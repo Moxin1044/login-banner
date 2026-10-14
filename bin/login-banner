@@ -1,0 +1,522 @@
+#!/bin/sh
+# ============================================================================
+#  login-banner
+#  Cool system-wide login banner, installed for all users.
+#  Hooked from /etc/profile.d/99-login-banner.sh (login shells only).
+#
+#  Auto-detects the distribution from /etc/os-release and picks the matching
+#  ASCII logo, colour gradient and package manager.
+#
+#  Manual use:
+#      login-banner                              # show on any login (default)
+#      SSH_BANNER_SHOW=ssh    login-banner       # only over SSH
+#      SSH_BANNER_SHOW=never  login-banner
+#      LOGIN_BANNER_SIMULATE=ubuntu login-banner # preview another distro
+# ============================================================================
+
+# ---- only on a real, capable terminal --------------------------------------
+# LOGIN_BANNER_FORCE=1 skips the terminal checks (preview / testing).
+if [ -z "${LOGIN_BANNER_FORCE:-}" ]; then
+    [ -t 1 ] || exit 0
+    [ "${TERM:-dumb}" = "dumb" ] && exit 0
+fi
+
+case "${SSH_BANNER_SHOW:-always}" in
+    never)  exit 0 ;;
+    ssh)    [ -n "${SSH_CONNECTION:-}" ] || exit 0 ;;
+esac
+
+# ---- truecolor support? ----------------------------------------------------
+TRUE=0
+case "${COLORTERM:-}" in
+    truecolor|24bit) TRUE=1 ;;
+esac
+case "${TERM:-}" in
+    *direct*|xterm-kitty|alacritty|wezterm|foot|contour|rio|ghostty) TRUE=1 ;;
+esac
+
+# ---- distribution detection ------------------------------------------------
+# FAMILY drives logo + colour.  PKG drives the "upgrades" line.
+FAMILY="generic"
+
+if [ -r /etc/os-release ]; then
+    _id="$(. /etc/os-release 2>/dev/null; printf '%s' "${ID:-}")"
+    _like="$(. /etc/os-release 2>/dev/null; printf '%s' "${ID_LIKE:-}")"
+    _pretty="$(. /etc/os-release 2>/dev/null; printf '%s' "${PRETTY_NAME:-${NAME:-Linux}}")"
+else
+    _id=""; _like=""; _pretty="Linux"
+fi
+
+# manual override for previewing:  LOGIN_BANNER_SIMULATE=debian login-banner
+SIM_OS=""
+if [ -n "${LOGIN_BANNER_SIMULATE:-}" ]; then
+    _id="$LOGIN_BANNER_SIMULATE"
+    _like="$LOGIN_BANNER_SIMULATE"
+    case "$_id" in
+        kali)     SIM_OS="Kali GNU/Linux Rolling" ;;
+        debian)   SIM_OS="Debian GNU/Linux 12 (bookworm)" ;;
+        ubuntu)   SIM_OS="Ubuntu 24.04.1 LTS" ;;
+        arch)     SIM_OS="Arch Linux" ;;
+        manjaro)  SIM_OS="Manjaro Linux" ;;
+        endeavouros) SIM_OS="EndeavourOS" ;;
+        fedora)   SIM_OS="Fedora Linux 41 (Workstation Edition)" ;;
+        rhel)     SIM_OS="Red Hat Enterprise Linux 9.5 (Plow)" ;;
+        rocky)    SIM_OS="Rocky Linux 9.5 (Blue Onyx)" ;;
+        suse)     SIM_OS="openSUSE Leap 15.6" ;;
+        alpine)   SIM_OS="Alpine Linux v3.21" ;;
+        gentoo)   SIM_OS="Gentoo Linux" ;;
+        void)     SIM_OS="Void Linux" ;;
+        nixos)    SIM_OS="NixOS 24.11 (Vicuna)" ;;
+        freebsd)  SIM_OS="FreeBSD 14.2-RELEASE" ;;
+        generic)  SIM_OS="Linux" ;;
+        *)        SIM_OS="" ;;
+    esac
+fi
+
+case "$_id" in
+    kali)                                           FAMILY="kali"    ;;
+    debian|raspbian|devuan|mx|antix)                FAMILY="debian"  ;;
+    ubuntu|linuxmint|pop|elementary|zorin|neon|kubuntu|xubuntu|deepin)
+                                                    FAMILY="ubuntu"  ;;
+    arch|artix|archarm)                             FAMILY="arch"    ;;
+    manjaro)                                        FAMILY="manjaro" ;;
+    endeavouros|garuda|cachyos|rebornos)            FAMILY="arch"    ;;
+    fedora|nobara|bazzite)                          FAMILY="fedora"  ;;
+    rhel)                                           FAMILY="rhel"    ;;
+    centos|rocky|almalinux|ol|scientific|virtuozzo) FAMILY="rocky"   ;;
+    opensuse*|sles|sled|suse)                       FAMILY="suse"    ;;
+    alpine|postmarketos)                            FAMILY="alpine"  ;;
+    gentoo|funtoo)                                  FAMILY="gentoo"  ;;
+    void)                                           FAMILY="void"    ;;
+    nixos)                                          FAMILY="nixos"   ;;
+    freebsd|dragonfly)                              FAMILY="freebsd" ;;
+    *)
+        # fall back on ID_LIKE
+        case " $_like " in
+            *debian*)   FAMILY="debian"  ;;
+            *ubuntu*)   FAMILY="ubuntu"  ;;
+            *arch*)     FAMILY="arch"    ;;
+            *fedora*)   FAMILY="fedora"  ;;
+            *rhel*)     FAMILY="rhel"    ;;
+            *suse*)     FAMILY="suse"    ;;
+            *alpine*)   FAMILY="alpine"  ;;
+            *)          FAMILY="generic" ;;
+        esac
+        ;;
+esac
+
+# ---- package manager: name + pending update count --------------------------
+pkg_mgr=""
+upd_h="n/a"
+
+detect_pkg() {
+    if command -v apt >/dev/null 2>&1; then
+        pkg_mgr="apt"
+        _n="$(LC_ALL=C timeout 8 apt list --upgradable 2>/dev/null | grep -c 'upgradable')"
+    elif command -v apt-get >/dev/null 2>&1; then
+        pkg_mgr="apt"
+        _n="$(LC_ALL=C timeout 8 apt-get -s -o Debug::NoLocking=true upgrade 2>/dev/null | grep -c '^Inst')"
+    elif command -v dnf >/dev/null 2>&1; then
+        pkg_mgr="dnf"
+        _n="$(timeout 10 dnf -q check-update 2>/dev/null | grep -cE '^[[:alnum:]_.+-]+[[:space:]]+[[:alnum:]_.:+-]+[[:space:]]')"
+    elif command -v yum >/dev/null 2>&1; then
+        pkg_mgr="yum"
+        _n="$(timeout 10 yum -q check-update 2>/dev/null | grep -cE '^[[:alnum:]_.+-]+[[:space:]]+[[:alnum:]_.:+-]+[[:space:]]')"
+    elif command -v pacman >/dev/null 2>&1; then
+        pkg_mgr="pacman"
+        _out="$(timeout 5 checkupdates 2>/dev/null)"; _rc=$?
+        if [ "$_rc" -ne 124 ]; then
+            _n="$(printf '%s\n' "$_out" | sed '/^$/d' | wc -l | tr -d ' ')"
+        else
+            _n="$(pacman -Qu 2>/dev/null | wc -l | tr -d ' ')"
+        fi
+        pac_n="$(pacman -Q 2>/dev/null | wc -l | tr -d ' ')"
+    elif command -v zypper >/dev/null 2>&1; then
+        pkg_mgr="zypper"
+        _n="$(timeout 12 zypper -q list-updates 2>/dev/null | grep -cE '^v[[:space:]]')"
+    elif command -v apk >/dev/null 2>&1; then
+        pkg_mgr="apk"
+        _n="$(timeout 10 apk version -l '<' 2>/dev/null | grep -c '^[[:alnum:]]')"
+    elif command -v xbps-install >/dev/null 2>&1; then
+        pkg_mgr="xbps"
+        _n="$(timeout 10 xbps-install -Sun 2>/dev/null | wc -l | tr -d ' ')"
+    elif command -v emerge >/dev/null 2>&1; then
+        pkg_mgr="portage"
+        _n="$(timeout 10 emerge -quD @world 2>/dev/null | grep -c '^\[')"
+    elif command -v nix-env >/dev/null 2>&1; then
+        pkg_mgr="nix"
+        _n="$(timeout 10 nix-env -q --upgrade 2>/dev/null | wc -l | tr -d ' ')"
+    elif command -v pkg >/dev/null 2>&1; then
+        pkg_mgr="pkg"
+        _n="$(timeout 10 pkg version -vIL= 2>/dev/null | grep -c '<')"
+    elif command -v brew >/dev/null 2>&1; then
+        pkg_mgr="brew"
+        _n="$(timeout 10 brew outdated 2>/dev/null | wc -l | tr -d ' ')"
+    else
+        return 0
+    fi
+    _n="$(printf '%s' "${_n:-0}" | tr -cd '0-9')"
+    [ -n "$_n" ] || _n=0
+    if [ "$_n" = "0" ]; then upd_h="up to date"; else upd_h="$_n available"; fi
+}
+detect_pkg
+
+# ---- collect system information --------------------------------------------
+user="${USER:-$(id -un 2>/dev/null)}"
+host="$(hostname 2>/dev/null)"
+[ -n "$host" ] || host="$(uname -n 2>/dev/null)"
+[ -n "$host" ] || host="$(cat /etc/hostname 2>/dev/null)"
+[ -n "$host" ] || host="localhost"
+
+if [ -n "$SIM_OS" ]; then
+    os="$SIM_OS"
+elif [ -r /etc/os-release ]; then
+    os="$_pretty"
+else
+    os="$(uname -s 2>/dev/null)"
+fi
+
+kernel="$(uname -r)"
+uptime_s="$(uptime -p 2>/dev/null | sed 's/^up //')"
+[ -n "$uptime_s" ] || uptime_s="$(uptime 2>/dev/null | sed 's/.*up //; s/,.*//')"
+shell_n="$(basename "${SHELL:-sh}")"
+
+# CPU: Linux /proc, FreeBSD sysctl
+cpu="$(awk -F: '/^model name/{sub(/^[ \t]+/,"",$2); print $2; exit}' /proc/cpuinfo 2>/dev/null)"
+[ -n "$cpu" ] || cpu="$(sysctl -n hw.model 2>/dev/null)"
+if [ -z "$cpu" ]; then
+    cpu="$(awk -F: '/^Hardware/{sub(/^[ \t]+/,"",$2); print $2; exit}' /proc/cpuinfo 2>/dev/null)"
+fi
+[ -n "$cpu" ] || cpu="$(uname -m)"
+cpu="$(printf '%s' "$cpu" | sed 's/ CPU @.*//; s/(R)//g; s/(TM)//g; s/(tm)//g; s/  */ /g')"
+if [ "${#cpu}" -gt 30 ]; then cpu="$(printf '%s' "$cpu" | cut -c1-30)"; fi
+
+# memory: Linux /proc/meminfo, else sysctl (FreeBSD / macOS)
+mem_total="$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null)"
+mem_avail="$(awk '/^MemAvailable:/{print $2}' /proc/meminfo 2>/dev/null)"
+if [ -z "$mem_total" ]; then
+    _mt="$(sysctl -n hw.physmem 2>/dev/null || sysctl -n hw.memsize 2>/dev/null)"
+    if [ -n "$_mt" ]; then
+        mem_total=$(( _mt / 1024 ))
+        _free="$(sysctl -n vm.stats.vm.v_free_count 2>/dev/null)"
+        _page="$(sysctl -n hw.pagesize 2>/dev/null)"
+        if [ -n "$_free" ] && [ -n "$_page" ]; then
+            mem_avail=$(( _free * _page / 1024 ))
+        else
+            mem_avail=0
+        fi
+    fi
+fi
+[ -n "$mem_total" ] || mem_total=0
+[ -n "$mem_avail" ] || mem_avail=0
+if [ "$mem_total" -gt 0 ] 2>/dev/null; then
+    mem_pct=$(( (mem_total - mem_avail) * 100 / mem_total ))
+else
+    mem_pct=0
+fi
+mem_h="$(awk -v t="$mem_total" -v a="$mem_avail" 'BEGIN{
+    u = t - a;
+    if (t > 1048576) printf "%.1fG/%.1fG", u/1048576, t/1048576;
+    else             printf "%dM/%dM", u/1024, t/1024;
+}')"
+
+# disk: prefer GNU df features, fall back to plain df for BSD / busybox
+disk_h="$(df -h --output=used,size / 2>/dev/null | awk 'NR==2{printf "%s/%s", $1, $2}')"
+disk_pct="$(df --output=pcent / 2>/dev/null | awk 'NR==2{gsub(/[^0-9]/,""); print}')"
+if [ -z "$disk_h" ]; then
+    disk_h="$(df -h / 2>/dev/null | awk 'NR==2{printf "%s/%s", $3, $2}')"
+fi
+if [ -z "$disk_pct" ]; then
+    disk_pct="$(df / 2>/dev/null | awk 'NR==2{gsub(/%/,""); print $5}')"
+fi
+[ -n "$disk_pct" ] || disk_pct=0
+
+ip_addr="$(hostname -I 2>/dev/null | awk '{print $1}')"
+if [ -z "$ip_addr" ]; then
+    ip_addr="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1)"
+fi
+if [ -z "$ip_addr" ]; then
+    ip_addr="$(ifconfig 2>/dev/null | awk '/inet /{print $2}' | grep -v '^127\.' | head -n1)"
+fi
+[ -n "$ip_addr" ] || ip_addr="127.0.0.1"
+
+if [ -n "${SSH_CONNECTION:-}" ]; then
+    from="$(printf '%s' "$SSH_CONNECTION" | awk '{print $1}')"
+else
+    from="local"
+fi
+now="$(date '+%Y-%m-%d %H:%M')"
+
+# ---- render ----------------------------------------------------------------
+awk -v TRUE="$TRUE" -v FAM="$FAMILY" -v PKGMGR="$pkg_mgr" -v PACKN="${pac_n:-}" \
+    -v user="$user" -v host="$host" -v os="$os" -v kernel="$kernel" \
+    -v uptime="$uptime_s" -v shell="$shell_n" -v cpu="$cpu" -v upd="$upd_h" \
+    -v mem="$mem_h" -v memp="$mem_pct" \
+    -v disk="$disk_h" -v diskp="$disk_pct" \
+    -v ip="$ip_addr" -v from="$from" -v now="$now" '
+function makebar(pct,   n, f, i, s, col) {
+    n = 12
+    f = int(pct * n / 100 + 0.5)
+    if (f > n) f = n
+    if (f < 0) f = 0
+    col = (pct >= 85) ? ESC "[38;5;203m" : (pct >= 60 ? ESC "[38;5;221m" : ESC "[38;5;79m")
+    s = col
+    for (i = 1; i <= n; i++) s = s (i <= f ? "\342\226\210" : "\342\226\221")
+    return s R
+}
+BEGIN {
+    ESC = sprintf("%c", 27)
+    R   = ESC "[0m"
+    B   = ESC "[1m"
+
+    # ---- per-distribution logo (5 lines), colours and accent ----------------
+    if (FAM == "kali") {
+        logo[1]=" _  __    _    _     ___ "
+        logo[2]="| |/ /   / \\  | |   |_ _|"
+        logo[3]="| '"'"' /   / _ \\ | |    | | "
+        logo[4]="| . \\  / ___ \\| |___ | | "
+        logo[5]="|_|\\_\\/_/   \\_\\_____|___|"
+        rgb[1]="255;45;150";  x256[1]="198"
+        rgb[2]="224;70;240";  x256[2]="171"
+        rgb[3]="140;90;255";  x256[3]="105"
+        rgb[4]="70;140;255";  x256[4]="69"
+        rgb[5]="40;215;255";  x256[5]="45"
+        accent="255;45;150"; accent256="198"
+        tail="40;215;255"
+    } else if (FAM == "debian") {
+        logo[1]="     ____  ____ ___ ____   _    _   _ "
+        logo[2]="    |  _ \\| __ )_ _|  _ \\ / \\  | \\ | |"
+        logo[3]="    | | | |  _ \\| || |_) / _ \\ |  \\| |"
+        logo[4]="    | |_| | |_) | ||  __/ ___ \\| |\\  |"
+        logo[5]="    |____/|____/___|_| /_/   \\_\\_| \\_|"
+        rgb[1]="215;10;45";   x256[1]="160"
+        rgb[2]="215;40;70";   x256[2]="167"
+        rgb[3]="200;70;110";  x256[3]="168"
+        rgb[4]="190;100;150"; x256[4]="175"
+        rgb[5]="180;130;190"; x256[5]="182"
+        accent="215;10;45"; accent256="160"
+        tail="180;130;190"
+    } else if (FAM == "ubuntu") {
+        logo[1]="     _   _ ____  _   _ _____ _   _ "
+        logo[2]="    | | | | __ )| | | |_   _| | | |"
+        logo[3]="    | | | |  _ \\| | | | | | | |_| |"
+        logo[4]="    | |_| | |_) | |_| | | | |  _  |"
+        logo[5]="     \\___/|____/ \\___/  |_| |_| |_|"
+        rgb[1]="233;84;32";   x256[1]="166"
+        rgb[2]="240;110;50";  x256[2]="173"
+        rgb[3]="247;140;70";  x256[3]="209"
+        rgb[4]="250;175;95";  x256[4]="215"
+        rgb[5]="253;205;125"; x256[5]="222"
+        accent="233;84;32"; accent256="166"
+        tail="253;205;125"
+    } else if (FAM == "manjaro") {
+        logo[1]="     __  __    _    _   _   _  ___  ___ "
+        logo[2]="    |  \\/  |  / \\  | \\ | | / \\| _ \\/ _ \\"
+        logo[3]="    | |\\/| | / _ \\ |  \\| |/ _ \\ | | | | |"
+        logo[4]="    | |  | |/ ___ \\| |\\  |/ ___ \\ |_| |_|"
+        logo[5]="    |_|  |_/_/   \\_\\_| \\_/_/   \\_\\___/(_)"
+        rgb[1]="22;170;110";  x256[1]="35"
+        rgb[2]="26;190;130";  x256[2]="42"
+        rgb[3]="60;205;150";  x256[3]="49"
+        rgb[4]="110;220;180"; x256[4]="79"
+        rgb[5]="170;240;210"; x256[5]="115"
+        accent="22;170;110"; accent256="35"
+        tail="170;240;210"
+    } else if (FAM == "arch") {
+        logo[1]="    _    ____   ____ _   _ "
+        logo[2]="   / \\  |  _ \\ / ___| | | |"
+        logo[3]="  / _ \\ | |_) | |   | |_| |"
+        logo[4]=" / ___ \\|  _ <| |___|  _  |"
+        logo[5]="/_/   \\_\\_| \\_\\\\____|_| |_|"
+        rgb[1]="30;110;190";  x256[1]="25"
+        rgb[2]="23;147;209";  x256[2]="33"
+        rgb[3]="60;185;235";  x256[3]="39"
+        rgb[4]="110;215;248"; x256[4]="45"
+        rgb[5]="170;240;255"; x256[5]="51"
+        accent="23;147;209"; accent256="33"
+        tail="170;240;255"
+    } else if (FAM == "fedora") {
+        logo[1]="    _____ ______ ____   ___  ____   _   "
+        logo[2]="   |  ___|  ____|  _ \\ / _ \\|  _ \\ / \\  "
+        logo[3]="   | |_  | |__  | | | | | | | |_) / _ \\ "
+        logo[4]="   |  _| |  __| | |_| | |_| |  _ < ___ \\"
+        logo[5]="   |_|   |_|    |____/ \\___/|_| \\_\\_/ \\_\\"
+        rgb[1]="41;65;145";   x256[1]="25"
+        rgb[2]="41;90;175";   x256[2]="25"
+        rgb[3]="30;120;200";  x256[3]="32"
+        rgb[4]="40;150;220";  x256[4]="39"
+        rgb[5]="80;180;240";  x256[5]="45"
+        accent="41;65;145"; accent256="25"
+        tail="80;180;240"
+    } else if (FAM == "rhel" || FAM == "rocky") {
+        if (FAM == "rhel") {
+            logo[1]="    ____  _   _ _____ _     "
+            logo[2]="   |  _ \\| | | | ____| |    "
+            logo[3]="   | |_) | |_| |  _| | |    "
+            logo[4]="   |  _ <|  _  | |___| |___ "
+            logo[5]="   |_| \\_\\_| |_|_____|_____|"
+        } else {
+            logo[1]="   ____   ___   ____ _  __   __  "
+            logo[2]="  |  _ \\ / _ \\ / ___| |/ /   \\ \\ "
+            logo[3]="  | |_) | | | | |   | '"'"' /     \\ \\"
+            logo[4]="  |  _ <| |_| | |___| . \\     / /"
+            logo[5]="  |_| \\_\\\\___/ \\____|_|\\_\\   /_/ "
+        }
+        rgb[1]="190;30;45";   x256[1]="160"
+        rgb[2]="210;50;60";   x256[2]="167"
+        rgb[3]="225;80;90";   x256[3]="174"
+        rgb[4]="235;115;120"; x256[4]="181"
+        rgb[5]="245;150;155"; x256[5]="188"
+        accent="190;30;45"; accent256="160"
+        tail="245;150;155"
+    } else if (FAM == "suse") {
+        logo[1]="   ___  ____  _____ _   _ ____  _   _ ____  "
+        logo[2]="  / _ \\|  _ \\| ____| \\ | / ___|| | | / ___| "
+        logo[3]=" | | | | |_) |  _| |  \\| \\___ \\| | | \\___ \\ "
+        logo[4]=" | |_| |  __/| |___| |\\  |___) | |_| |___) |"
+        logo[5]="  \\___/|_|   |_____|_| \\_|____/ \\___/|____/ "
+        rgb[1]="0;140;70";    x256[1]="28"
+        rgb[2]="30;165;90";   x256[2]="35"
+        rgb[3]="70;190;120";  x256[3]="42"
+        rgb[4]="120;215;155"; x256[4]="79"
+        rgb[5]="175;235;195"; x256[5]="115"
+        accent="0;140;70"; accent256="28"
+        tail="175;235;195"
+    } else if (FAM == "alpine") {
+        logo[1]="     _    _     ____ ___ _   _ _____ "
+        logo[2]="    / \\  | |   |  _ \\_ _| \\ | | ____|"
+        logo[3]="   / _ \\ | |   | |_) | ||  \\| |  _|  "
+        logo[4]="  / ___ \\| |___|  __/| || |\\  | |___ "
+        logo[5]=" /_/   \\_\\_____|_|  |___|_| \\_|_____|"
+        rgb[1]="13;60;120";   x256[1]="17"
+        rgb[2]="20;85;150";   x256[2]="24"
+        rgb[3]="30;115;175";  x256[3]="31"
+        rgb[4]="50;145;200";  x256[4]="38"
+        rgb[5]="90;180;225";  x256[5]="45"
+        accent="13;60;120"; accent256="17"
+        tail="90;180;225"
+    } else if (FAM == "gentoo") {
+        logo[1]="   ____ _____ _   _ _____ ___  ___  "
+        logo[2]="  / ___| ____| \\ | |_   _/ _ \\/ _ \\ "
+        logo[3]=" | |  _|  _| |  \\| | | || | | | | | |"
+        logo[4]=" | |_| | |___| |\\  | | || |_| | |_| |"
+        logo[5]="  \\____|_____|_| \\_| |_| \\___/ \\___/ "
+        rgb[1]="120;80;170";  x256[1]="97"
+        rgb[2]="140;100;190"; x256[2]="104"
+        rgb[3]="160;125;210"; x256[3]="140"
+        rgb[4]="185;155;230"; x256[4]="146"
+        rgb[5]="210;185;245"; x256[5]="183"
+        accent="120;80;170"; accent256="97"
+        tail="210;185;245"
+    } else if (FAM == "void") {
+        logo[1]="   __     __ ___  ___ ____  "
+        logo[2]="   \\ \\   / / _ \\|_ _|  _ \\ "
+        logo[3]="    \\ \\ / / | | || || | | |"
+        logo[4]="     \\ V /| |_| || || |_| |"
+        logo[5]="      \\_/  \\___/|___|____/ "
+        rgb[1]="70;130;60";   x256[1]="64"
+        rgb[2]="90;155;75";   x256[2]="71"
+        rgb[3]="115;180;95";  x256[3]="107"
+        rgb[4]="145;205;125"; x256[4]="114"
+        rgb[5]="180;225;165"; x256[5]="151"
+        accent="70;130;60"; accent256="64"
+        tail="180;225;165"
+    } else if (FAM == "nixos") {
+        logo[1]="   _   _ ___ __  __  ___  ____  "
+        logo[2]="  | \\ | |_ _|\\ \\/ / / _ \\/ ___| "
+        logo[3]="  |  \\| || |  \\  / | | | \\___ \\ "
+        logo[4]="  | |\\  || |  /  \\ | |_| |___) |"
+        logo[5]="  |_| \\_|___|/_/\\_\\ \\___/|____/ "
+        rgb[1]="80;160;220";  x256[1]="39"
+        rgb[2]="70;150;210";  x256[2]="32"
+        rgb[3]="60;135;200";  x256[3]="32"
+        rgb[4]="50;120;185";  x256[4]="25"
+        rgb[5]="40;105;170";  x256[5]="25"
+        accent="80;160;220"; accent256="39"
+        tail="40;105;170"
+    } else if (FAM == "freebsd") {
+        logo[1]="  _____ ____  _____ _____ ____  ____  "
+        logo[2]=" |  ___|  _ \\| ____| ____| __ )|  _ \\ "
+        logo[3]=" | |_  | |_) |  _| |  _| |  _ \\| | | |"
+        logo[4]=" |  _| |  _ <| |___| |___| |_) | |_| |"
+        logo[5]=" |_|   |_| \\_\\_____|_____|____/|____/ "
+        rgb[1]="175;0;0";    x256[1]="124"
+        rgb[2]="195;25;25";  x256[2]="160"
+        rgb[3]="215;60;50";  x256[3]="167"
+        rgb[4]="230;100;85"; x256[4]="174"
+        rgb[5]="245;145;130"; x256[5]="181"
+        accent="175;0;0"; accent256="124"
+        tail="245;145;130"
+    } else {
+        logo[1]="  _nnnn_      "
+        logo[2]=" dGGGGMMb     "
+        logo[3]="@p~qp~~qMb    "
+        logo[4]="M|@||@) M|    "
+        logo[5]="@,----.JM|    "
+        rgb[1]="120;120;120"; x256[1]="244"
+        rgb[2]="150;150;150"; x256[2]="246"
+        rgb[3]="180;180;180"; x256[3]="248"
+        rgb[4]="205;205;205"; x256[4]="250"
+        rgb[5]="230;230;230"; x256[5]="252"
+        accent="150;150;150"; accent256="246"
+        tail="230;230;230"
+    }
+
+    nl = 5
+    lw = 0
+    for (i = 1; i <= nl; i++) if (length(logo[i]) > lw) lw = length(logo[i])
+
+    if (TRUE == 1) { pink = ESC "[38;2;" accent "m"; cyan = ESC "[38;2;" tail "m" }
+    else           { pink = ESC "[38;5;" accent256 "m"; cyan = ESC "[38;5;" x256[5] "m" }
+    label = B cyan
+    value = ESC "[37m"
+
+    info[1]  = B pink user R B "@" R B cyan host R
+    info[2]  = label "OS      " R value os R
+    info[3]  = label "Kernel  " R value kernel R
+    info[4]  = label "Uptime  " R value uptime R
+    info[5]  = label "Shell   " R value shell R
+    info[6]  = label "CPU     " R value cpu R
+    n_idx = 6
+    if (PKGMGR == "pacman") {
+        n_idx++
+        info[n_idx] = label "Packages" R value " " PACKN " (pacman)" R
+    }
+    n_idx++
+    if (PKGMGR != "") {
+        info[n_idx] = label "Updates " R value " " upd " (" PKGMGR ")" R
+    } else {
+        info[n_idx] = label "Updates " R value " " upd R
+    }
+    n_idx++
+    info[n_idx] = label "Memory  " R value mem "  " makebar(memp) " " value memp "%" R
+    n_idx++
+    info[n_idx] = label "Disk    " R value disk "  " makebar(diskp) " " value diskp "%" R
+    n_idx++
+    info[n_idx] = label "IP      " R value ip R
+    n_idx++
+    info[n_idx] = label "From    " R value from R
+    n_idx++
+    info[n_idx] = label "Time    " R value now R
+    n_idx++
+    info[n_idx] = " " ESC "[38;5;198m" "\342\226\210" ESC "[38;5;171m" "\342\226\210" \
+                     ESC "[38;5;105m" "\342\226\210" ESC "[38;5;69m"  "\342\226\210" \
+                     ESC "[38;5;45m"  "\342\226\210" ESC "[38;5;79m"  "\342\226\210" \
+                     ESC "[38;5;221m" "\342\226\210" ESC "[38;5;203m" "\342\226\210" R
+    ni = n_idx
+    n  = (nl > ni) ? nl : ni
+
+    print ""
+    for (i = 1; i <= n; i++) {
+        left = "  "
+        if (i <= nl) {
+            pad = ""
+            for (j = 0; j < lw - length(logo[i]); j++) pad = pad " "
+            left = left (TRUE == 1 ? ESC "[38;2;" rgb[i] "m" : ESC "[38;5;" x256[i] "m") logo[i] R pad
+        } else {
+            for (j = 0; j < lw; j++) left = left " "
+        }
+        printf "%s    %s\n", left, (i <= ni ? info[i] : "")
+    }
+    print ""
+}'
