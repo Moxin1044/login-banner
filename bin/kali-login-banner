@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Moxin1044
 # Compatibility wrapper.
 # The real script (login-banner) auto-detects the distribution, so this name
 # is kept only so existing installs / scripts keep working.

@@ -142,4 +142,16 @@ LOGIN_BANNER_FORCE=1 LOGIN_BANNER_SIMULATE=rocky  login-banner
 
 ## License
 
-MIT
+**MIT** —— 全文见 [LICENSE](LICENSE)。
+
+一句话：随便用、随便改、随便商用、可以闭源，**只需保留版权声明和许可声明，作者不对任何后果负责**。
+
+每个源文件头部都带 SPDX 标识：
+
+```sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Moxin1044
+```
+
+**这一条对本项目不是形式主义**：安装脚本会把 `bin/login-banner` 复制到 `/usr/local/bin/`，
+**那份副本就是你分发出去的东西**，MIT 要求它必须带上版权与许可声明——否则免责条款也跟着失效。

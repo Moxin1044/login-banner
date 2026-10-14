@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Moxin1044
 # ============================================================================
 #  login-banner
 #  Cool system-wide login banner, installed for all users.
